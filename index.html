@@ -203,6 +203,27 @@
     padding:8px 16px;border-radius:100px;opacity:0;transition:opacity .3s;z-index:60;pointer-events:none;letter-spacing:.05em}
   .saved-flash.show{opacity:1}
 
+  /* ---------- saved sessions ---------- */
+  .session-badge{margin-top:10px;font-family:"Spline Sans Mono",monospace;font-size:11px;
+    letter-spacing:.08em;color:var(--chalk-dim)}
+  .session-badge b{color:var(--gold);font-weight:600}
+  .sess-update{display:block;width:100%;margin:10px 0 4px}
+  .sess-empty{color:var(--chalk-dim);font-size:13px}
+  .sess-list{display:flex;flex-direction:column;gap:10px;margin-top:14px}
+  .sess-row{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+  .sess-row.active{border-color:var(--turf)}
+  .sess-info{min-width:0;flex:1}
+  .sess-name{font-family:"Saira Condensed",sans-serif;font-weight:700;font-size:16px;outline:none}
+  .sess-name:focus{color:#fff}
+  .sess-meta{font-family:"Spline Sans Mono",monospace;font-size:11px;color:var(--chalk-dim);margin-top:2px}
+  .sess-actions{flex:none;display:flex;gap:6px}
+  .sess-actions button{background:none;border:1px solid var(--line);color:var(--chalk-dim);
+    border-radius:7px;padding:6px 10px;font-family:"Spline Sans Mono",monospace;font-size:11px;
+    letter-spacing:.06em;text-transform:uppercase;cursor:pointer}
+  .sess-actions button:hover{color:var(--chalk);border-color:var(--chalk-dim)}
+  .sess-actions button.danger:hover{color:var(--flag);border-color:var(--flag)}
+
   footer{margin-top:30px;font-family:"Spline Sans Mono",monospace;font-size:10px;
     letter-spacing:.1em;color:color-mix(in srgb,var(--chalk-dim) 50%,transparent)}
 
@@ -266,6 +287,7 @@
     <h1>Drill<span class="l2">Builder</span></h1>
     <p class="lede">Your sequence runs down the page. Pull drills up from the bank into any step. Rename, re-order, set the minutes — it's all yours to move. This is the working draft.</p>
     <span class="draft"><i></i>Draft — you direct the changes</span>
+    <div class="session-badge" id="sessionBadge"></div>
   </header>
 
   <div class="clock">
@@ -282,6 +304,8 @@
   <div class="tools">
     <button class="tbtn solid" onclick="window.print()">Print wall sheet</button>
     <button class="tbtn ghost" id="addStep">Add step</button>
+    <button class="tbtn ghost" id="sessionsBtn">Sessions</button>
+    <button class="tbtn ghost" id="newSession">New</button>
     <button class="tbtn ghost" id="reset">Reset draft</button>
   </div>
 
@@ -316,6 +340,17 @@
       <textarea id="helperText" rows="1" placeholder="Talk it through…" aria-label="Your message"></textarea>
       <button id="helperSend">Send</button>
     </div>
+  </div>
+</div>
+
+<!-- SAVED SESSIONS -->
+<div class="helper" id="sessions">
+  <div class="helper-card">
+    <div class="helper-head">
+      <div class="ttl">Saved Sessions<small>local to this device</small></div>
+      <button class="close" id="sessionsClose" aria-label="Close">×</button>
+    </div>
+    <div class="helper-body" id="sessionsBody"></div>
   </div>
 </div>
 
@@ -397,12 +432,112 @@ let canSave=true;
 function clone(o){return JSON.parse(JSON.stringify(o));}
 function load(){
   try{const s=localStorage.getItem('hp_drill_v1');if(s){const p=JSON.parse(s);
-    if(p&&Array.isArray(p.spine)&&p.bank)return p;}}catch(e){}
-  return clone(DRAFT);
+    if(p&&Array.isArray(p.spine)&&p.bank){if(p.currentSessionId===undefined)p.currentSessionId=null;return p;}}}catch(e){}
+  const d=clone(DRAFT);d.currentSessionId=null;return d;
 }
 function save(){if(!canSave)return;try{localStorage.setItem('hp_drill_v1',JSON.stringify(state));flash();}catch(e){canSave=false;}}
 let state=load();
 let editMode=false;
+
+/* ===== saved sessions (named, savable/loadable copies of the sequence) ===== */
+function loadSessions(){
+  try{const s=localStorage.getItem('hp_drill_sessions_v1');if(s){const p=JSON.parse(s);if(Array.isArray(p))return p;}}catch(e){}
+  return [];
+}
+function saveSessions(){try{localStorage.setItem('hp_drill_sessions_v1',JSON.stringify(sessions));}catch(e){}}
+let sessions=loadSessions();
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,8);}
+function sessionTotal(spine){return spine.reduce((a,s)=>a+(+s.min||0),0);}
+
+function renderSessionBadge(){
+  const b=document.getElementById('sessionBadge');
+  const cur=sessions.find(s=>s.id===state.currentSessionId);
+  b.innerHTML='Working on: <b>'+esc(cur?cur.name:'Untitled draft')+'</b>';
+}
+
+const sessionsEl=document.getElementById('sessions');
+const sessionsBody=document.getElementById('sessionsBody');
+function openSessions(){renderSessionsBody();sessionsEl.classList.add('open');}
+function closeSessions(){sessionsEl.classList.remove('open');}
+document.getElementById('sessionsBtn').addEventListener('click',openSessions);
+document.getElementById('sessionsClose').addEventListener('click',closeSessions);
+sessionsEl.addEventListener('click',e=>{if(e.target===sessionsEl)closeSessions();});
+
+function renderSessionsBody(){
+  sessionsBody.innerHTML='';
+
+  const saveRow=document.createElement('div');saveRow.className='addchip';
+  const ni=document.createElement('input');ni.placeholder='Name this session…';
+  const nb=document.createElement('button');nb.textContent='Save as new';
+  const doSaveAs=()=>{
+    const v=ni.value.trim();if(!v)return;
+    const entry={id:uid(),name:v,spine:clone(state.spine),savedAt:Date.now()};
+    sessions.push(entry);saveSessions();
+    state.currentSessionId=entry.id;save();
+    ni.value='';renderSessionsBody();renderSessionBadge();
+  };
+  nb.addEventListener('click',doSaveAs);
+  ni.addEventListener('keydown',e=>{if(e.key==='Enter')doSaveAs();});
+  saveRow.appendChild(ni);saveRow.appendChild(nb);
+  sessionsBody.appendChild(saveRow);
+
+  const cur=sessions.find(s=>s.id===state.currentSessionId);
+  if(cur){
+    const upd=document.createElement('button');upd.className='tbtn solid sess-update';
+    upd.textContent='Update “'+cur.name+'” with current sequence';
+    upd.addEventListener('click',()=>{
+      cur.spine=clone(state.spine);cur.savedAt=Date.now();saveSessions();renderSessionsBody();flash();
+    });
+    sessionsBody.appendChild(upd);
+  }
+
+  const list=document.createElement('div');list.className='sess-list';
+  if(!sessions.length){
+    const empty=document.createElement('p');empty.className='sess-empty';
+    empty.textContent='No saved sessions yet — build a sequence, then Save as new.';
+    list.appendChild(empty);
+  }
+  sessions.slice().sort((a,b)=>b.savedAt-a.savedAt).forEach(entry=>{
+    const row=document.createElement('div');row.className='sess-row'+(entry.id===state.currentSessionId?' active':'');
+    const info=document.createElement('div');info.className='sess-info';
+    const nm=document.createElement('div');nm.className='sess-name';nm.contentEditable='true';nm.spellcheck=false;nm.textContent=entry.name;
+    nm.addEventListener('blur',()=>{
+      const nv=nm.textContent.trim();
+      if(nv){entry.name=nv;saveSessions();renderSessionBadge();}else{nm.textContent=entry.name;}
+    });
+    nm.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();nm.blur();}});
+    const meta=document.createElement('div');meta.className='sess-meta';
+    meta.textContent=entry.spine.length+' steps · '+sessionTotal(entry.spine)+' min · '+new Date(entry.savedAt).toLocaleDateString();
+    info.appendChild(nm);info.appendChild(meta);
+    const actions=document.createElement('div');actions.className='sess-actions';
+    const loadBtn=document.createElement('button');loadBtn.textContent='Load';
+    loadBtn.addEventListener('click',()=>{
+      if(confirm('Load "'+entry.name+'"? This replaces your current working sequence (save it first if you want to keep it).')){
+        state.spine=clone(entry.spine);state.currentSessionId=entry.id;
+        renderSpine();renderBank();save();renderSessionBadge();closeSessions();
+      }
+    });
+    const delBtn=document.createElement('button');delBtn.className='danger';delBtn.textContent='Delete';
+    delBtn.addEventListener('click',()=>{
+      if(confirm('Delete saved session "'+entry.name+'"? This can\'t be undone.')){
+        sessions=sessions.filter(s=>s.id!==entry.id);saveSessions();
+        if(state.currentSessionId===entry.id){state.currentSessionId=null;save();}
+        renderSessionsBody();renderSessionBadge();
+      }
+    });
+    actions.appendChild(loadBtn);actions.appendChild(delBtn);
+    row.appendChild(info);row.appendChild(actions);
+    list.appendChild(row);
+  });
+  sessionsBody.appendChild(list);
+}
+
+document.getElementById('newSession').addEventListener('click',()=>{
+  if(confirm('Start a new blank session? Unsaved changes to the current one will be lost unless you Save it first.')){
+    state.spine=[];state.currentSessionId=null;
+    renderSpine();renderBank();save();renderSessionBadge();
+  }
+});
 
 const spineEl=document.getElementById('spine');
 const bankInner=document.getElementById('bankInner');
@@ -644,7 +779,7 @@ document.getElementById('addStep').addEventListener('click',()=>{
   window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
 });
 document.getElementById('reset').addEventListener('click',()=>{
-  state=clone(DRAFT);renderSpine();renderBank();save();
+  state=clone(DRAFT);state.currentSessionId=null;renderSpine();renderBank();save();renderSessionBadge();
 });
 
 /* ===== saved flash ===== */
@@ -753,7 +888,7 @@ document.getElementById('lockBtn').addEventListener('click',()=>{
 });
 
 /* ===== boot ===== */
-renderSpine();renderBank();chalkDraw();
+renderSpine();renderBank();renderSessionBadge();chalkDraw();
 </script>
 </body>
 </html>
