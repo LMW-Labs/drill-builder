@@ -1,4 +1,41 @@
-<!DOCTYPE html>
+// Cloudflare Worker — serves the Drill Builder app at / and handles POST /api/name.
+// Deploy: wrangler deploy
+// Secret required: wrangler secret put ANTHROPIC_API_KEY
+
+const SYSTEM_PROMPT = `You are the Drill Naming Helper inside Coach Shay Hodge's wide-receiver training tool. Shay is a former All-SEC / NFL receiver who built his own training system over many years. These are HIS drills and HIS system. Your single job is to help him NAME a drill — not to invent his system for him.
+
+CORE STANCE
+- The name is always Shay's. You pull it out of him; you do not hand it to him.
+- He is the expert on the field. You are a thinking partner that asks sharp questions and reflects his own words back to him.
+- Never imply the machine knows his craft better than he does. You make HIM sound like the expert, because he is.
+
+HOW TO WORK (ask first, suggest only if stuck)
+1. When given a drill to name, START by asking 1 short question at a time. Good questions:
+   - "What does the athlete actually FEEL doing this?"
+   - "What's the one cue you yell during it?"
+   - "What does this set up — what route or move does it feed?"
+   - "Is this a cousin of a drill you've already named?"
+2. Use his answers to reflect back: "So it's the one where they snap the hips and it feeds the slant — you've been calling that family 'snap' drills. Want this in that family?"
+3. Only AFTER 2-3 exchanges, IF he's clearly stuck, offer 2-3 options built FROM HIS OWN WORDS. Label them as his raw material, not your invention: "From what you said, these fit — pick one or bend it."
+4. When he lands on a name, confirm it crisply and stop. Do not keep talking.
+
+KEEP HIM CENTERED (important)
+- Shay chases shiny ideas and loses the thread. If he drifts to a different drill, a new category, a tangent — gently pull him back: "Good — park that. We were locking [current drill]. Let's finish it, then chase that."
+- One drill at a time. Don't let the conversation sprawl. Finish things.
+- If he's spinning on one drill too long, help him commit: "You've got a good one already — '[X]'. Lock it and keep moving?"
+
+HIS STYLE
+- His naming is short, punchy, football-room vernacular: Hitch, Slant, Sluggo, Blaze, Cage, Dart, Ribbon, Crown, Star, Glance, Comet, Bender. Stay in that register unless he wants descriptive.
+- Respect names he already has. If a drill is already named, don't rename it unless he asks.
+
+TONE
+- Talk like a coach in the room: tight, direct, no fluff, no corporate AI voice. Short messages. No long paragraphs. He's on a phone.
+- Don't over-praise. A coach respects a coach. Be straight.
+
+When the user has settled on a final name, end your message with a line in EXACTLY this format on its own line so the tool can capture it:
+NAME: <the final name>`;
+
+const HTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -483,7 +520,7 @@ function renderSpine(){
     inp.addEventListener('input',()=>{state.spine[i].min=+inp.value||0;updateClock();save();});
     const ms=document.createElement('span');ms.textContent='min';
     mins.appendChild(inp);mins.appendChild(ms);
-    const del=document.createElement('button');del.className='del';del.setAttribute('aria-label','Delete step');del.textContent='\u2715';
+    const del=document.createElement('button');del.className='del';del.setAttribute('aria-label','Delete step');del.textContent='\\u2715';
     del.addEventListener('click',()=>{
       if(confirm('Delete step "'+(s.name||'')+'"? Its drills go back to the bank.')){
         state.spine.splice(i,1);renderSpine();renderBank();save();
@@ -572,7 +609,7 @@ function renderBank(){
       }
       c.appendChild(label);
       if(editMode){
-        const cx=document.createElement('button');cx.className='cx';cx.setAttribute('aria-label','Delete drill');cx.textContent='\u2715';
+        const cx=document.createElement('button');cx.className='cx';cx.setAttribute('aria-label','Delete drill');cx.textContent='\\u2715';
         cx.addEventListener('click',()=>{
           const arr=state.bank[cat];const idx=arr.indexOf(d);if(idx>-1)arr.splice(idx,1);
           state.spine.forEach(st=>{if(st.drills){const j=st.drills.indexOf(d);if(j>-1)st.drills.splice(j,1);}});
@@ -723,7 +760,7 @@ function sessionMinutes(spine){return (spine||[]).reduce((a,s)=>a+(+s.min||0),0)
 function encodeSession(obj){
   const bytes=new TextEncoder().encode(JSON.stringify(obj));
   let bin='';bytes.forEach(b=>bin+=String.fromCharCode(b));
-  return btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  return btoa(bin).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'');
 }
 function decodeSession(str){
   try{
@@ -774,7 +811,7 @@ function renderSessions(){
     });
     const delBtn=document.createElement('button');delBtn.className='del';delBtn.textContent='Delete';
     delBtn.addEventListener('click',()=>{
-      if(confirm('Delete saved session "'+sess.name+'"? This can\'t be undone.')){
+      if(confirm('Delete saved session "'+sess.name+'"? This can\\'t be undone.')){
         sessions.splice(i,1);saveSessionsList();renderSessions();
       }
     });
@@ -894,14 +931,14 @@ async function send(userText,isSeed){
     if(data.error){pushMsg('assistant','(Helper offline: '+(data.error)+') You can still type a name and lock it.');helperSend.disabled=false;return;}
     let text=data.text||'';
     // capture NAME: line
-    const m=text.match(/NAME:\s*(.+)\s*$/m);
-    if(m){proposedName=m[1].trim().replace(/^["']|["']$/g,'');text=text.replace(/NAME:\s*.+\s*$/m,'').trim();
+    const m=text.match(/NAME:\\s*(.+)\\s*$/m);
+    if(m){proposedName=m[1].trim().replace(/^["']|["']$/g,'');text=text.replace(/NAME:\\s*.+\\s*$/m,'').trim();
       lockName.textContent='“'+proposedName+'”';lockbar.classList.add('show');}
     if(text)pushMsg('assistant',text);
     convo.push({role:'assistant',content:data.text||text});
   }catch(e){
     thinking(false);
-    pushMsg('assistant','(Couldn\u2019t reach the helper. Check connection — you can still type a name and lock it.)');
+    pushMsg('assistant','(Couldn\\u2019t reach the helper. Check connection — you can still type a name and lock it.)');
   }
   helperSend.disabled=false;
 }
@@ -928,4 +965,95 @@ document.getElementById('lockBtn').addEventListener('click',()=>{
 renderSpine();renderBank();renderSessions();chalkDraw();checkSharedImport();
 </script>
 </body>
-</html>
+</html>`;
+
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
+export default {
+  async fetch(request, env) {
+    const { pathname } = new URL(request.url);
+
+    if (request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: CORS_HEADERS });
+    }
+
+    if (pathname === "/api/name" && request.method === "POST") {
+      return apiName(request, env);
+    }
+
+    return new Response(HTML, {
+      headers: { "Content-Type": "text/html;charset=UTF-8" },
+    });
+  },
+};
+
+async function apiName(request, env) {
+  const h = { ...CORS_HEADERS, "Content-Type": "application/json" };
+
+  if (!env.ANTHROPIC_API_KEY) {
+    return new Response(
+      JSON.stringify({ error: "Server not configured: missing API key." }),
+      { status: 500, headers: h }
+    );
+  }
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return new Response(JSON.stringify({ error: "Bad request." }), { status: 400, headers: h });
+  }
+
+  const messages = Array.isArray(body.messages) ? body.messages : null;
+  if (!messages) {
+    return new Response(JSON.stringify({ error: "Missing messages." }), { status: 400, headers: h });
+  }
+
+  const drillContext = typeof body.drillContext === "string" ? body.drillContext : "";
+  const sys = drillContext
+    ? SYSTEM_PROMPT + "\n\nCONTEXT FOR THIS SESSION:\n" + drillContext
+    : SYSTEM_PROMPT;
+
+  try {
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": env.ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 600,
+        system: sys,
+        messages,
+      }),
+    });
+
+    if (!r.ok) {
+      const t = await r.text();
+      return new Response(
+        JSON.stringify({ error: "Upstream error", detail: t.slice(0, 500) }),
+        { status: 502, headers: h }
+      );
+    }
+
+    const data = await r.json();
+    const text = (data.content || [])
+      .filter((b) => b.type === "text")
+      .map((b) => b.text)
+      .join("\n")
+      .trim();
+
+    return new Response(JSON.stringify({ text }), { status: 200, headers: h });
+  } catch (e) {
+    return new Response(
+      JSON.stringify({ error: "Request failed.", detail: String(e).slice(0, 300) }),
+      { status: 500, headers: h }
+    );
+  }
+}
